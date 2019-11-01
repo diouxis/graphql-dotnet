@@ -1,13 +1,13 @@
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using System.Linq.Expressions;
-using System.Reflection;
-using System.Text.RegularExpressions;
 using GraphQL.Language.AST;
 using GraphQL.Types;
 using GraphQL.Utilities;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Text.RegularExpressions;
 
 namespace GraphQL
 {
@@ -41,6 +41,12 @@ namespace GraphQL
                    namedType is IInputObjectGraphType;
         }
 
+        public static bool IsInputObjectType(this IGraphType type)
+        {
+            var namedType = type.GetNamedType();
+            return namedType is IInputObjectGraphType;
+        }
+
         public static IGraphType GetNamedType(this IGraphType type)
         {
             IGraphType unmodifiedType = type;
@@ -62,10 +68,10 @@ namespace GraphQL
         {
             if (resolve == null)
             {
-                resolve = t => (IGraphType) Activator.CreateInstance(t);
+                resolve = t => (IGraphType)Activator.CreateInstance(t);
             }
 
-            if (type.GetTypeInfo().IsGenericType)
+            if (type.IsGenericType)
             {
                 if (type.GetGenericTypeDefinition() == typeof(NonNullGraphType<>))
                 {
@@ -89,7 +95,7 @@ namespace GraphQL
 
         public static Type GetNamedType(this Type type)
         {
-            if (type.GetTypeInfo().IsGenericType
+            if (type.IsGenericType
                 && (type.GetGenericTypeDefinition() == typeof(NonNullGraphType<>) ||
                     type.GetGenericTypeDefinition() == typeof(ListGraphType<>)))
             {
@@ -98,8 +104,6 @@ namespace GraphQL
 
             return type;
         }
-
-        private static readonly IEnumerable<string> EmptyStringArray = new string[0];
 
         public static IEnumerable<string> IsValidLiteralValue(this IGraphType type, IValue valueAst, ISchema schema)
         {
@@ -121,19 +125,19 @@ namespace GraphQL
             }
             else if (valueAst is NullValue)
             {
-                return EmptyStringArray;
+                return Array.Empty<string>();
             }
 
             if (valueAst == null)
             {
-                return EmptyStringArray;
+                return Array.Empty<string>();
             }
 
             // This function only tests literals, and assumes variables will provide
             // values of the correct type.
             if (valueAst is VariableReference)
             {
-                return EmptyStringArray;
+                return Array.Empty<string>();
             }
 
             if (type is ListGraphType list)
@@ -157,7 +161,7 @@ namespace GraphQL
             {
                 if (!(valueAst is ObjectValue objValue))
                 {
-                    return new[] {$"Expected \"{inputType.Name}\", found not an object."};
+                    return new[] { $"Expected \"{inputType.Name}\", found not an object." };
                 }
 
                 var fields = inputType.Fields.ToList();
@@ -187,7 +191,7 @@ namespace GraphQL
                 return errors;
             }
 
-            var scalar = (ScalarGraphType) type;
+            var scalar = (ScalarGraphType)type;
 
             var parseResult = scalar.ParseLiteral(valueAst);
 
@@ -196,13 +200,41 @@ namespace GraphQL
                 return new[] { $"Expected type \"{type.Name}\", found {AstPrinter.Print(valueAst)}." };
             }
 
-            return EmptyStringArray;
+            return Array.Empty<string>();
         }
 
-        public static string NameOf<T, P>(this Expression<Func<T, P>> expression)
+        public static string NameOf<TSourceType, TProperty>(this Expression<Func<TSourceType, TProperty>> expression)
         {
-            var member = (MemberExpression) expression.Body;
+            var member = (MemberExpression)expression.Body;
             return member.Member.Name;
+        }
+
+        public static string DescriptionOf<TSourceType, TProperty>(this Expression<Func<TSourceType, TProperty>> expression)
+        {
+            return expression.Body is MemberExpression expr
+                ? expr.Member.Description()
+                : null;
+        }
+
+        public static string DeprecationReasonOf<TSourceType, TProperty>(this Expression<Func<TSourceType, TProperty>> expression)
+        {
+            return expression.Body is MemberExpression expr
+                ? expr.Member.ObsoleteMessage()
+                : null;
+        }
+
+        public static object DefaultValueOf<TSourceType, TProperty>(this Expression<Func<TSourceType, TProperty>> expression)
+        {
+            return expression.Body is MemberExpression expr
+                ? (expr.Member.GetCustomAttributes(typeof(DefaultValueAttribute), false).FirstOrDefault() as DefaultValueAttribute)?.Value
+                : null;
+        }
+
+        public static TMetadataProvider WithMetadata<TMetadataProvider>(this TMetadataProvider provider, string key, object value)
+            where TMetadataProvider : IProvideMetadata
+        {
+            provider.Metadata[key] = value;
+            return provider;
         }
 
         /// <summary>
@@ -404,6 +436,41 @@ namespace GraphQL
             if (serialized is TimeSpan span)
             {
                 return new TimeSpanValue(span);
+            }
+
+            if (serialized is Guid guid)
+            {
+                return new GuidValue(guid);
+            }
+
+            if (serialized is sbyte @sbyte)
+            {
+                return new SByteValue(@sbyte);
+            }
+
+            if (serialized is byte @byte)
+            {
+                return new ByteValue(@byte);
+            }
+
+            if (serialized is short @short)
+            {
+                return new ShortValue(@short);
+            }
+
+            if (serialized is ushort uint16)
+            {
+                return new UShortValue(uint16);
+            }
+
+            if (serialized is uint uint32)
+            {
+                return new UIntValue(uint32);
+            }
+
+            if (serialized is ulong uint64)
+            {
+                return new ULongValue(uint64);
             }
 
             if (serialized is string)

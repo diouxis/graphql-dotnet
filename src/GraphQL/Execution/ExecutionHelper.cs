@@ -1,9 +1,9 @@
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
 using GraphQL.Introspection;
 using GraphQL.Language.AST;
 using GraphQL.Types;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace GraphQL.Execution
 {
@@ -286,10 +286,11 @@ namespace GraphQL.Execution
                     var objectField = objectValue.Field(field.Name);
                     if (objectField != null)
                     {
-                        var fieldValue = CoerceValue(schema, field.ResolvedType, objectField.Value, variables);
-                        fieldValue = fieldValue ?? field.DefaultValue;
-
-                        obj[field.Name] = fieldValue;
+                        obj[field.Name] = CoerceValue(schema, field.ResolvedType, objectField.Value, variables) ?? field.DefaultValue;
+                    }
+                    else if (field.DefaultValue != null)
+                    {
+                        obj[field.Name] = field.DefaultValue;
                     }
                 }
 
@@ -371,6 +372,10 @@ namespace GraphQL.Execution
             return CollectFields(context, specificType, selectionSet, Fields.Empty(), new List<string>());
         }
 
+        // Neither @skip nor @include has precedence over the other. In the case that both the @skip and @include
+        // directives are provided on the same field or fragment, it must be queried only if the @skip condition
+        // is false and the @include condition is true. Stated conversely, the field or fragment must not be queried
+        // if either the @skip condition is true or the @include condition is false.
         public static bool ShouldIncludeNode(ExecutionContext context, Directives directives)
         {
             if (directives != null)
@@ -384,9 +389,8 @@ namespace GraphQL.Execution
                         directive.Arguments,
                         context.Variables);
 
-                    values.TryGetValue("if", out object ifObj);
-
-                    return !(bool.TryParse(ifObj?.ToString() ?? string.Empty, out bool ifVal) && ifVal);
+                    if (values.TryGetValue("if", out object ifObj) && bool.TryParse(ifObj?.ToString() ?? string.Empty, out bool ifVal) && ifVal)
+                        return false;
                 }
 
                 directive = directives.Find(DirectiveGraphType.Include.Name);
@@ -398,8 +402,7 @@ namespace GraphQL.Execution
                         directive.Arguments,
                         context.Variables);
 
-                    values.TryGetValue("if", out object ifObj);
-                    return bool.TryParse(ifObj?.ToString() ?? string.Empty, out bool ifVal) && ifVal;
+                    return values.TryGetValue("if", out object ifObj) && bool.TryParse(ifObj?.ToString() ?? string.Empty, out bool ifVal) && ifVal;
                 }
             }
 

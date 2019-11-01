@@ -1,14 +1,15 @@
-using System.Collections.Generic;
-using System.Threading;
 using GraphQL.Instrumentation;
 using GraphQL.Language.AST;
-using Field = GraphQL.Language.AST.Field;
-using System.Threading.Tasks;
 using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using Field = GraphQL.Language.AST.Field;
+using GraphQL.Execution;
 
 namespace GraphQL.Types
 {
-    public class ResolveFieldContext<TSource>
+    public class ResolveFieldContext<TSource> : IProvideUserContext
     {
         public string FieldName { get; set; }
 
@@ -24,7 +25,7 @@ namespace GraphQL.Types
 
         public object RootValue { get; set; }
 
-        public object UserContext { get; set; }
+        public IDictionary<string, object> UserContext { get; set; }
 
         public TSource Source { get; set; }
 
@@ -73,40 +74,40 @@ namespace GraphQL.Types
             Metrics = context.Metrics;
             Errors = context.Errors;
             SubFields = context.SubFields;
+            Path = context.Path;
         }
 
         public TType GetArgument<TType>(string name, TType defaultValue = default)
         {
-            return (TType) GetArgument(typeof(TType), name, defaultValue);
+            return (TType)GetArgument(typeof(TType), name, defaultValue);
         }
 
         public object GetArgument(System.Type argumentType, string name, object defaultValue = null)
         {
-            if (!HasArgument(name))
+            var argumentName = Schema?.FieldNameConverter.NameFor(name, null) ?? name;
+
+            if (Arguments == null || !Arguments.TryGetValue(argumentName, out var arg))
             {
                 return defaultValue;
             }
 
-            var arg = Arguments[name];
             if (arg is Dictionary<string, object> inputObject)
             {
-                var type = argumentType;
-                if (type.Namespace?.StartsWith("System") == true)
-                {
+                if (argumentType == typeof(object))
                     return arg;
-                }
 
-                return inputObject.ToObject(type);
+                if (argumentType.IsPrimitive())
+                    throw new InvalidOperationException($"Could not read primitive type '{argumentType.FullName}' from complex argument '{argumentName}'");
+
+                return inputObject.ToObject(argumentType);
             }
 
-            return arg.GetPropertyValue(argumentType);
+            var result = arg.GetPropertyValue(argumentType);
+
+            return result == null && argumentType.IsValueType ? defaultValue : result;
         }
 
-        public bool HasArgument(string argumentName)
-        {
-            return Arguments?.ContainsKey(argumentName) ?? false;
-        }
-
+        public bool HasArgument(string argumentName) => Arguments?.ContainsKey(argumentName) ?? false;
 
         public Task<object> TryAsyncResolve(Func<ResolveFieldContext<TSource>, Task<object>> resolve, Func<ExecutionErrors, Task<object>> error = null)
         {
@@ -117,7 +118,7 @@ namespace GraphQL.Types
         {
             try
             {
-                return await resolve(this);
+                return await resolve(this).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -132,7 +133,7 @@ namespace GraphQL.Types
                 else
                 {
                     var result = error(Errors);
-                    return result == null ? default : await result;
+                    return result == null ? default : await result.ConfigureAwait(false);
                 }
             }
         }

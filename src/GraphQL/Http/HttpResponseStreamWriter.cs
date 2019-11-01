@@ -26,8 +26,8 @@ namespace GraphQL.Http
         private readonly ArrayPool<char> _charPool;
         private readonly int _charBufferSize;
 
-        private byte[] _byteBuffer;
-        private char[] _charBuffer;
+        private readonly byte[] _byteBuffer;
+        private readonly char[] _charBuffer;
 
         private int _charBufferCount;
         private bool _disposed;
@@ -161,7 +161,7 @@ namespace GraphQL.Http
 
             if (_charBufferCount == _charBufferSize)
             {
-                await FlushInternalAsync(flushEncoder: false);
+                await FlushInternalAsync(flushEncoder: false).ConfigureAwait(false);
             }
 
             _charBuffer[_charBufferCount] = value;
@@ -184,7 +184,7 @@ namespace GraphQL.Http
             {
                 if (_charBufferCount == _charBufferSize)
                 {
-                    await FlushInternalAsync(flushEncoder: false);
+                    await FlushInternalAsync(flushEncoder: false).ConfigureAwait(false);
                 }
 
                 CopyToCharBuffer(values, ref index, ref count);
@@ -209,7 +209,7 @@ namespace GraphQL.Http
             {
                 if (_charBufferCount == _charBufferSize)
                 {
-                    await FlushInternalAsync(flushEncoder: false);
+                    await FlushInternalAsync(flushEncoder: false).ConfigureAwait(false);
                 }
 
                 CopyToCharBuffer(value, ref index, ref count);
@@ -304,7 +304,7 @@ namespace GraphQL.Http
 
             if (count > 0)
             {
-                await _stream.WriteAsync(_byteBuffer, 0, count);
+                await _stream.WriteAsync(_byteBuffer, 0, count).ConfigureAwait(false);
             }
         }
 

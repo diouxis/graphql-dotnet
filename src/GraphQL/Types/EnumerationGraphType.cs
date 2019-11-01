@@ -1,10 +1,11 @@
+using GraphQL.Language.AST;
+using GraphQL.Utilities;
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using GraphQL.Language.AST;
-using GraphQL.Utilities;
 
 namespace GraphQL.Types
 {
@@ -28,6 +29,9 @@ namespace GraphQL.Types
 
         public void AddValue(EnumValueDefinition value)
         {
+            if (value == null)
+                throw new ArgumentNullException(nameof(value));
+
             NameValidator.ValidateName(value.Name, "enum");
             Values.Add(value);
         }
@@ -65,51 +69,55 @@ namespace GraphQL.Types
         }
     }
 
-    public class EnumerationGraphType<TEnum> : EnumerationGraphType
+    /// <summary>
+    /// Allows you to automatically register the necessary enumeration members for the specified enum.
+    /// Supports <see cref="DescriptionAttribute"/> and <see cref="ObsoleteAttribute"/>.
+    /// Also it can get descriptions for enum fields from the xml comments.
+    /// </summary>
+    /// <typeparam name="TEnum"> The enum to take values from. </typeparam>
+    public class EnumerationGraphType<TEnum> : EnumerationGraphType where TEnum : Enum
     {
         public EnumerationGraphType()
         {
             var type = typeof(TEnum);
+            var names = Enum.GetNames(type);
+            var enumMembers = names.Select(n => (name: n, member: type
+                    .GetMember(n, BindingFlags.Static | BindingFlags.Public | BindingFlags.DeclaredOnly)
+                    .First()));
+            var enumGraphData = enumMembers.Select(e => (
+                name: ChangeEnumCase(e.name),
+                value: Enum.Parse(type, e.name),
+                description: e.member.Description(),
+                deprecation: e.member.ObsoleteMessage()
+            ));
 
-            Name = Name ?? StringUtils.ToPascalCase(type.Name);
+            Name = StringUtils.ToPascalCase(type.Name);
+            Description = Description ?? typeof(TEnum).Description();
+            DeprecationReason = DeprecationReason ?? typeof(TEnum).ObsoleteMessage();
 
-            foreach (var enumName in Enum.GetNames(type))
+            foreach (var (name, value, description, deprecation) in enumGraphData)
             {
-                var enumMember = type
-                    .GetMember(enumName, BindingFlags.Static | BindingFlags.Public | BindingFlags.DeclaredOnly)
-                    .First();
-
-                AddValue(ChangeEnumCase(enumMember.Name), null, Enum.Parse(type, enumName));
+                AddValue(name, description, value, deprecation);
             }
         }
 
-        protected virtual string ChangeEnumCase(string val)
-        {
-            return StringUtils.ToConstantCase(val);
-        }
+        protected virtual string ChangeEnumCase(string val) => StringUtils.ToConstantCase(val);
     }
 
     public class EnumValues : IEnumerable<EnumValueDefinition>
     {
         private readonly List<EnumValueDefinition> _values = new List<EnumValueDefinition>();
 
-        public void Add(EnumValueDefinition value)
-        {
-            _values.Add(value);
-        }
+        public EnumValueDefinition this[string name] => _values.FirstOrDefault(enumDef => enumDef.Name == name);
 
-        public IEnumerator<EnumValueDefinition> GetEnumerator()
-        {
-            return _values.GetEnumerator();
-        }
+        public void Add(EnumValueDefinition value) => _values.Add(value ?? throw new ArgumentNullException(nameof(value)));
 
-        IEnumerator IEnumerable.GetEnumerator()
-        {
-            return GetEnumerator();
-        }
+        public IEnumerator<EnumValueDefinition> GetEnumerator() => _values.GetEnumerator();
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
-    public class EnumValueDefinition
+    public class EnumValueDefinition : MetadataProvider
     {
         public string Name { get; set; }
         public string Description { get; set; }

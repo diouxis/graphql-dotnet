@@ -22,13 +22,11 @@ namespace GraphQL.Builders
 
     public class FieldBuilder<TSourceType, TReturnType>
     {
-        private readonly EventStreamFieldType _fieldType;
-
-        public EventStreamFieldType FieldType => _fieldType;
+        public EventStreamFieldType FieldType { get; }
 
         private FieldBuilder(EventStreamFieldType fieldType)
         {
-            _fieldType = fieldType;
+            FieldType = fieldType;
         }
 
         public static FieldBuilder<TSourceType, TReturnType> Create(IGraphType type, string name = "default")
@@ -55,7 +53,7 @@ namespace GraphQL.Builders
 
         public FieldBuilder<TSourceType, TReturnType> Type(IGraphType type)
         {
-            _fieldType.ResolvedType = type;
+            FieldType.ResolvedType = type;
             return this;
         }
 
@@ -63,31 +61,37 @@ namespace GraphQL.Builders
         {
             NameValidator.ValidateName(name);
 
-            _fieldType.Name = name;
+            FieldType.Name = name;
             return this;
         }
 
         public FieldBuilder<TSourceType, TReturnType> Description(string description)
         {
-            _fieldType.Description = description;
+            FieldType.Description = description;
             return this;
         }
 
         public FieldBuilder<TSourceType, TReturnType> DeprecationReason(string deprecationReason)
         {
-            _fieldType.DeprecationReason = deprecationReason;
+            FieldType.DeprecationReason = deprecationReason;
             return this;
         }
 
         public FieldBuilder<TSourceType, TReturnType> DefaultValue(TReturnType defaultValue = default)
         {
-            _fieldType.DefaultValue = defaultValue;
+            FieldType.DefaultValue = defaultValue;
+            return this;
+        }
+
+        internal FieldBuilder<TSourceType, TReturnType> DefaultValue(object defaultValue)
+        {
+            FieldType.DefaultValue = defaultValue;
             return this;
         }
 
         public FieldBuilder<TSourceType, TReturnType> Resolve(IFieldResolver resolver)
         {
-            _fieldType.Resolver = resolver;
+            FieldType.Resolver = resolver;
             return this;
         }
 
@@ -106,25 +110,30 @@ namespace GraphQL.Builders
             return new FieldBuilder<TSourceType, TNewReturnType>(FieldType);
         }
 
-        public FieldBuilder<TSourceType, TReturnType> Argument<TArgumentGraphType>(string name, string description)
-        {
-            _fieldType.Arguments.Add(new QueryArgument(typeof(TArgumentGraphType))
+        public FieldBuilder<TSourceType, TReturnType> Argument<TArgumentGraphType>(string name, string description, Action<QueryArgument> configure = null)
+            => Argument<TArgumentGraphType>(name, arg =>
             {
-                Name = name,
-                Description = description,
+                arg.Description = description;
+                configure?.Invoke(arg);
             });
-            return this;
-        }
 
         public FieldBuilder<TSourceType, TReturnType> Argument<TArgumentGraphType, TArgumentType>(string name, string description,
-            TArgumentType defaultValue = default)
+            TArgumentType defaultValue = default, Action<QueryArgument> configure = null)
+            => Argument<TArgumentGraphType>(name, arg =>
+            {
+                arg.Description = description;
+                arg.DefaultValue = defaultValue;
+                configure?.Invoke(arg);
+            });
+
+        public FieldBuilder<TSourceType, TReturnType> Argument<TArgumentGraphType>(string name, Action<QueryArgument> configure = null)
         {
-            _fieldType.Arguments.Add(new QueryArgument(typeof(TArgumentGraphType))
+            var arg = new QueryArgument(typeof(TArgumentGraphType))
             {
                 Name = name,
-                Description = description,
-                DefaultValue = defaultValue,
-            });
+            };
+            configure?.Invoke(arg);
+            FieldType.Arguments.Add(arg);
             return this;
         }
 

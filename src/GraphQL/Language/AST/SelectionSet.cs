@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -20,9 +21,14 @@ namespace GraphQL.Language.AST
         public IList<ISelection> Selections => _selections;
         public override IEnumerable<INode> Children => _selections;
 
+        public void Prepend(ISelection selection)
+        {
+            _selections.Insert(0, selection ?? throw new ArgumentNullException(nameof(selection)));
+        }
+
         public void Add(ISelection selection)
         {
-            _selections.Add(selection);
+            _selections.Add(selection ?? throw new ArgumentNullException(nameof(selection)));
         }
 
         public SelectionSet Merge(SelectionSet otherSelection)
@@ -31,16 +37,13 @@ namespace GraphQL.Language.AST
             return new SelectionSet(newSelection);
         }
 
-        protected bool Equals(SelectionSet selectionSet)
-        {
-            return false;
-        }
+        protected bool Equals(SelectionSet selectionSet) => false;
 
         public override bool IsEqualTo(INode obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
-            if (obj.GetType() != this.GetType()) return false;
+            if (obj.GetType() != GetType()) return false;
             return Equals((SelectionSet)obj);
         }
 

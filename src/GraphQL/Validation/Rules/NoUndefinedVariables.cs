@@ -17,6 +17,8 @@ namespace GraphQL.Validation.Rules
                 ? $"Variable \"${varName}\" is not defined by operation \"{opName}\"."
                 : $"Variable \"${varName}\" is not defined.";
 
+        public static readonly NoUndefinedVariables Instance = new NoUndefinedVariables();
+
         public INodeVisitor Validate(ValidationContext context)
         {
             var variableNameDefined = new Dictionary<string, bool>();
@@ -32,8 +34,7 @@ namespace GraphQL.Validation.Rules
                         foreach (var usage in context.GetRecursiveVariables(op))
                         {
                             var varName = usage.Node.Name;
-                            bool found;
-                            if (!variableNameDefined.TryGetValue(varName, out found))
+                            if (!variableNameDefined.TryGetValue(varName, out bool found))
                             {
                                 var error = new ValidationError(
                                     context.OriginalQuery,

@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using GraphQL.Reflection;
 using GraphQL.Subscription;
+using GraphQL.Utilities;
 
 namespace GraphQL.Resolvers
 {
@@ -22,7 +23,7 @@ namespace GraphQL.Resolvers
 
         async Task<IObservable<object>> IAsyncEventStreamResolver.SubscribeAsync(ResolveEventStreamContext context)
         {
-            var result = await SubscribeAsync(context);
+            var result = await SubscribeAsync(context).ConfigureAwait(false);
             return (IObservable<object>)result;
         }
     }
@@ -44,40 +45,37 @@ namespace GraphQL.Resolvers
 
         async Task<IObservable<object>> IAsyncEventStreamResolver.SubscribeAsync(ResolveEventStreamContext context)
         {
-            var result = await SubscribeAsync(context);
+            var result = await SubscribeAsync(context).ConfigureAwait(false);
             return (IObservable<object>)result;
         }
     }
 
     public class AsyncEventStreamResolver : IAsyncEventStreamResolver
     {
-        private IAccessor _accessor;
-        private IDependencyResolver _dependencyResolver;
-        private object _target;
+        private readonly IAccessor _accessor;
+        private readonly IServiceProvider _serviceProvider;
 
-        public AsyncEventStreamResolver(IAccessor accessor, IDependencyResolver dependencyResolver)
+        public AsyncEventStreamResolver(IAccessor accessor, IServiceProvider serviceProvider)
         {
             _accessor = accessor;
-            _dependencyResolver = dependencyResolver;
-            _target = _dependencyResolver.Resolve(_accessor.DeclaringType);
+            _serviceProvider = serviceProvider;
         }
 
         async Task<IObservable<object>> IAsyncEventStreamResolver.SubscribeAsync(ResolveEventStreamContext context)
         {
             var parameters = _accessor.Parameters;
             var arguments = ReflectionHelper.BuildArguments(parameters, context);
-            var result = _accessor.GetValue(_target, arguments);
+            var target = _serviceProvider.GetRequiredService(_accessor.DeclaringType);
+            var result = _accessor.GetValue(target, arguments);
 
             if (!(result is Task task))
             {
                 throw new ArgumentException($"Return type of {_accessor.FieldName} should be Task<IObservable<T>>, instead of {_accessor.ReturnType}");
             }
 
-            await task;
+            await task.ConfigureAwait(false);
 
             return ((dynamic)task).Result;
         }
     }
-
-
 }

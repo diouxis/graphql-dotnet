@@ -10,19 +10,11 @@ namespace GraphQL.Http
     public interface IDocumentWriter
     {
         Task WriteAsync<T>(Stream stream, T value);
-
-        [Obsolete("This method is obsolete and will be removed in the next major version.  Use WriteAsync<T>(Stream, T) instead.")]
-        Task<IByteResult> WriteAsync<T>(T value);
-
-        [Obsolete("This method is obsolete and will be removed in the next major version.  Use WriteAsync<T>(Stream, T) instead.")]
-        string Write(object value);
     }
 
     public class DocumentWriter : IDocumentWriter
     {
-        private readonly ArrayPool<byte> _pool = ArrayPool<byte>.Shared;
         private readonly JsonArrayPool _jsonArrayPool = new JsonArrayPool(ArrayPool<char>.Shared);
-        private readonly int _maxArrayLength = 1048576;
         private readonly JsonSerializer _serializer;
         internal static readonly Encoding Utf8Encoding = new UTF8Encoding(false);
 
@@ -58,35 +50,6 @@ namespace GraphQL.Http
                 await jsonWriter.FlushAsync().ConfigureAwait(false);
             }
         }
-
-        public async Task<IByteResult> WriteAsync<T>(T value)
-        {
-            var pooledDocumentResult = new PooledByteResult(_pool, _maxArrayLength);
-            var stream = pooledDocumentResult.Stream;
-            try
-            {
-                await WriteAsync(stream, value).ConfigureAwait(false);
-                pooledDocumentResult.InitResponseFromCurrentStreamPosition();
-                return pooledDocumentResult;
-            }
-            catch (Exception)
-            {
-                pooledDocumentResult.Dispose();
-                throw;
-            }
-        }
-
-        public string Write(object value)
-        {
-            if (value == null) throw new ArgumentNullException(nameof(value));
-
-            if (!(value is ExecutionResult))
-            {
-                throw new ArgumentOutOfRangeException($"Expected {nameof(value)} to be a GraphQL.ExecutionResult, got {value.GetType().FullName}");
-            }
-
-            return this.WriteToStringAsync((ExecutionResult) value).GetAwaiter().GetResult();
-        }
     }
 
     public static class DocumentWriterExtensions
@@ -94,20 +57,15 @@ namespace GraphQL.Http
         /// <summary>
         /// Writes the <paramref name="value"/> to string.
         /// </summary>
-        /// <param name="writer"></param>
-        /// <param name="value"></param>
-        /// <returns></returns>
-        public static async Task<string> WriteToStringAsync(
-            this IDocumentWriter writer,
-            ExecutionResult value)
+        public static async Task<string> WriteToStringAsync<T>(this IDocumentWriter writer, T value)
         {
-            using(var stream = new MemoryStream())
+            using (var stream = new MemoryStream())
             {
-                await writer.WriteAsync(stream, value);
+                await writer.WriteAsync(stream, value).ConfigureAwait(false);
                 stream.Position = 0;
                 using (var reader = new StreamReader(stream, DocumentWriter.Utf8Encoding))
                 {
-                    return await reader.ReadToEndAsync();
+                    return await reader.ReadToEndAsync().ConfigureAwait(false);
                 }
             }
         }
